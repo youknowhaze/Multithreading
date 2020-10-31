@@ -236,4 +236,300 @@ class Person implements Runnable{
 }
 ````
 
+#### (9)、线程同步锁synchronized
+用三大线程不安全实例讲解同步锁（同步方法和同步代码块）
+- 买票
+- 取钱
+- ArrayList
+**线程不安全的情况，将代码中的synchronized锁去掉运行代码即可看到**
+##### 买票
+````java
+/**
+ * 买票实例
+ * 锁方法 应该锁住会存在安全问题的方法上，即方法中有值被改变时可能存在线程安全问题
+ */
+public class UnsafeTicket {
+    public static void main(String[] args) {
+        BuyTicket buyTicket = new BuyTicket();
+        new Thread(buyTicket,"学生党").start();
+        new Thread(buyTicket,"黄牛党").start();
+        new Thread(buyTicket,"上班族").start();
+    }
+}
 
+
+class BuyTicket implements Runnable{
+
+    private int ticketNumbers = 10;
+    boolean flag = true;
+
+    @Override
+    public void run() {
+        while (flag){
+            buy();
+        }
+    }
+
+    private synchronized void buy(){
+        if (ticketNumbers<=0){
+            flag = false;
+            return;
+        }
+
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        System.out.println(Thread.currentThread().getName()+" 拿到"+ticketNumbers--);
+    }
+
+}
+````
+
+##### 取钱
+````java
+public class UnsafeBank {
+    public static void main(String[] args) {
+        Account account = new Account(100,"住房基金");
+        Drawing you = new Drawing(account,50);
+        Drawing me = new Drawing(account,70);
+        new Thread(you,"你").start();
+        new Thread(me,"我").start();
+    }
+}
+
+
+class Account{
+    int money;
+    String name;
+
+    public Account(int money, String name) {
+        this.money = money;
+        this.name = name;
+    }
+}
+
+
+class Drawing implements Runnable{
+
+    Account account;
+    // 取了多少钱
+    int drawingMoney;
+
+
+    public Drawing(Account account, int drawingMoney) {
+        this.account = account;
+        this.drawingMoney = drawingMoney;
+    }
+
+    @Override
+    public void run() {
+
+        synchronized (account){
+            if (account.money - drawingMoney <0){
+                System.out.println(Thread.currentThread().getName()+"========账户余额不够========");
+                return;
+            }
+            try {
+                Thread.sleep(800);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            account.money -= drawingMoney;
+            System.out.println("卡内余额为："+account.money);
+            System.out.println(Thread.currentThread().getName()+ " 取走了："+drawingMoney);
+        }
+
+    }
+}
+````
+
+##### ArrayList
+````java
+/**
+ * 锁的对象应该是 被变更时会存在安全问题的对象所指向的this对象，
+ * 如这里被改的是list这个集合，他this所指向的是list本身，所以锁的对象应该是list
+ */
+public class UnsafeArrayList {
+    public static void main(String[] args) {
+        List<Integer> list = new ArrayList();
+
+        for (int i = 0; i < 10000; i++) {
+            new Thread(()->{
+                synchronized (list){
+                    list.add(1);
+                }
+            }).start();
+        }
+        try {
+            Thread.sleep(3000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("========   "+list.size());
+
+    }
+}
+````
+
+#### (10)、扩展线程安全集合CopyOnWriteArrayList
+这个集合不同于ArrayList，它本身是线程安全的，不需要加锁
+````java
+private static void safeList(){
+        CopyOnWriteArrayList list = new CopyOnWriteArrayList();
+        for (int i = 0; i < 10000; i++) {
+            new Thread(()->list.add(1)).start();
+        }
+        try {
+            Thread.sleep(3000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        System.out.println("==== "+list.size());
+    }
+````
+
+#### （11）、死锁
+````java
+public class DeadLockTest{
+
+    public static void main(String[] args) {
+        Demo d1 = new Demo(0);
+        Demo d2 = new Demo(1);
+        new Thread(d1,"玲珑").start();
+        new Thread(d2,"红豆").start();
+    }
+
+}
+
+class Demo implements Runnable{
+    // 公共资源
+    static String fish = "fish";
+    static String bearPaw = "bearPaw";
+    // 选择
+    int choose;
+
+    public Demo(int choose) {
+        this.choose = choose;
+    }
+
+    @Override
+    public void run() {
+        try {
+            //chooseForDeadLock();
+            chooseForUnDeadLock();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 死锁，两个线程互相持有另一个线程想要的资源且不释放
+     * @throws InterruptedException
+     */
+    private void chooseForDeadLock() throws InterruptedException {
+        if (choose == 0) {
+            synchronized (fish) {
+                System.out.println(Thread.currentThread().getName() + "=======获得鱼=======");
+                Thread.sleep(1000);
+                synchronized (bearPaw) {
+                    System.out.println(Thread.currentThread().getName() + "=======获得熊掌=======");
+                }
+            }
+        }else {
+             synchronized (bearPaw) {
+                System.out.println(Thread.currentThread().getName() + "-------获得熊掌-------");
+                Thread.sleep(2000);
+                synchronized (fish) {
+                    System.out.println(Thread.currentThread().getName() + "--------获得鱼---------");
+                }
+            }
+        }
+    }
+
+    /**
+     * 拿不到另一个线程资源的时候，释放自己所持资源，等待其他线程释放所需资源
+     * @throws InterruptedException
+     */
+    private void chooseForUnDeadLock() throws InterruptedException {
+        if (choose == 0) {
+            synchronized (fish) {
+                System.out.println(Thread.currentThread().getName() + "=======获得鱼=======");
+                Thread.sleep(1000);
+            }
+            synchronized (bearPaw) {
+                System.out.println(Thread.currentThread().getName() + "=======获得熊掌=======");
+            }
+        }else {
+            synchronized (bearPaw) {
+                System.out.println(Thread.currentThread().getName() + "-------获得熊掌-------");
+                Thread.sleep(2000);
+            }
+            synchronized (fish) {
+                System.out.println(Thread.currentThread().getName() + "--------获得鱼---------");
+            }
+        }
+    }
+}
+````
+
+#### (12)、显式锁
+````java
+/**
+ * 显式锁，是Lock的一个子类
+ */
+public class ReentrantLockTest {
+
+    public static void main(String[] args) {
+        TicketNum t = new TicketNum();
+        new Thread(t,"黄牛党").start();
+        new Thread(t,"学生党").start();
+        new Thread(t,"上班族").start();
+    }
+
+}
+
+class TicketNum implements Runnable{
+
+    private final ReentrantLock reentrantLock = new ReentrantLock();
+
+    int num = 10;
+    boolean flag = true;
+
+    @Override
+    public void run() {
+        while (flag){
+            try {
+                buyTicket();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * 显示锁，需在需要加锁的代码块前后声明加锁和释放锁
+     * @throws InterruptedException
+     */
+    private void buyTicket() throws InterruptedException {
+        try {
+            // 加锁
+            reentrantLock.lock();
+            if (num <= 0){
+                System.out.println("========没票了=======");
+                flag = false;
+                return;
+            }
+            Thread.sleep(400);
+
+            System.out.println(Thread.currentThread().getName()+" ------- "+num--);
+        }finally {
+            // 释放锁
+            reentrantLock.unlock();
+        }
+
+    }
+}
+````
